@@ -118,7 +118,7 @@ class LiarsDiceEnvironment(Environment):
             done, info = self.ta_env.step(action=opponent_action)
             if done:
                 self.game_done = True
-                return ""
+                return opponent_action
             current_player_id, current_observation = self.ta_env.get_observation()
         return self._format_observation(current_observation)
 
@@ -184,7 +184,7 @@ class LiarsDiceEnvironment(Environment):
             if self.game_done:
                 summary, reward, finished = self._handle_game_end()
                 return ToolOutput(
-                    blocks=[TextBlock(text=f"After your move:\n{after_move_obs}\n\n{summary}")],
+                    blocks=[TextBlock(text=f"After your move:\n{after_move_obs}\n\nOpponent's response:\n{obs_text}\n\n{summary}")],
                     metadata={"turn": self.turn_count, "reward": reward},
                     reward=reward,
                     finished=True,
