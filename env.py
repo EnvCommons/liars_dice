@@ -39,6 +39,8 @@ class LiarsDiceEnvironment(Environment):
     NUM_TASKS_PER_VARIANT = 50
     AGENT_PLAYER_ID = 0
     NUM_PLAYERS = 2
+    MAX_TURNS = 200
+    MAX_OPPONENT_RETRIES = 10
 
     def __init__(self, task_spec: JSONObject, secrets: dict[str, str] = {}) -> None:
         super().__init__(task_spec)
@@ -78,7 +80,10 @@ class LiarsDiceEnvironment(Environment):
             for m in re.finditer(r'^\[(?!GAME\])[^\]]+\].*$', observation, re.MULTILINE):
                 match = m
             if match:
-                return observation[match.end():].lstrip('\n')
+                result = observation[match.end():].lstrip('\n')
+                if result:
+                    return result
+                return match.group()
             return observation
         if isinstance(observation, list):
             if not observation:
@@ -112,10 +117,16 @@ class LiarsDiceEnvironment(Environment):
             return "[Call]"
 
     async def _run_opponent_turns(self, current_player_id: int, current_observation) -> str:
+        retries = 0
         while current_player_id != self.AGENT_PLAYER_ID:
-            obs_text = current_observation if isinstance(current_observation, str) else str(current_observation)
-            opponent_action = await self._get_opponent_action(obs_text, current_player_id)
+            retries += 1
+            if retries > self.MAX_OPPONENT_RETRIES:
+                opponent_action = "[Call]"
+            else:
+                obs_text = self._format_observation(current_observation)
+                opponent_action = await self._get_opponent_action(obs_text, current_player_id)
             done, info = self.ta_env.step(action=opponent_action)
+            self.turn_count += 1
             if done:
                 self.game_done = True
                 return opponent_action
@@ -162,6 +173,15 @@ class LiarsDiceEnvironment(Environment):
                 blocks=[TextBlock(text="Game is already over.")],
                 metadata={"error": "game_finished"},
                 reward=0.0,
+                finished=True,
+            )
+
+        if self.turn_count >= self.MAX_TURNS:
+            self.game_done = True
+            return ToolOutput(
+                blocks=[TextBlock(text=f"Game ended: maximum turns ({self.MAX_TURNS}) reached. Result is a draw.")],
+                metadata={"turn": self.turn_count, "reward": 0.5, "reason": "max_turns"},
+                reward=0.5,
                 finished=True,
             )
 
